@@ -1,6 +1,8 @@
 package lab7;
 
+import io.reactivex.rxjava3.annotations.NonNull;
 import io.reactivex.rxjava3.core.*;
+import io.reactivex.rxjava3.disposables.Disposable;
 import io.reactivex.rxjava3.schedulers.Schedulers;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
@@ -11,31 +13,50 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+
 public class Lab7 {
 
-    private static final String RESET = "\u001B[0m";
-    private static final String CYAN = "\u001B[36m";
-    private static final String GREEN = "\u001B[32m";
-    private static final String YELLOW = "\u001B[33m";
-    private static final String RED = "\u001B[31m";
-    private static final String PURPLE = "\u001B[35m";
+    public static void main(String[] args) throws Exception {
+        task1_1();
+        task1_2();
+        task2_1();
+        task2_2();
+        task3_1();
+        task3_2();
+        task4_1();
+        task4_2();
+        task5_1();
+        task5_2();
+        task6_1();
+        task6_2();
+        task7_1();
+        task7_2();
+    }
 
-    public static void main(String[] args) {
-        printHeader("ЛАБОРАТОРНА РОБОТА №7: RxJava (ADVANCED EDITION)");
+    enum OrderStatus { DELIVERED, PENDING, CANCELLED }
+    record Order(String id, OrderStatus status, double amount) {}
 
-        try {
-            executeTask("1.2 СЕРЕДНЬО: Порівняння підходів (Імперативний, Стріми, RxJava)", Lab7::task1_2);
-            executeTask("2.2 СЕРЕДНЬО: Холодні та Гарячі Observables", Lab7::task2_2);
-            executeTask("3.2 СЕРЕДНЬО: Оператори flatMap() vs concatMap()", Lab7::task3_2);
-            executeTask("4.2 СЕРЕДНЬО: Спеціалізовані типи Maybe та Completable", Lab7::task4_2);
-            executeTask("5.2 СЕРЕДНЬО: Паралельна агрегація даних з мікросервісів", Lab7::task5_2);
-            executeTask("6.2 СЕРЕДНЬО: Контроль потоку (Backpressure DROP)", Lab7::task6_2);
-            executeTask("7.2 СЕРЕДНЬО: Error Handling (Exponential Backoff)", Lab7::task7_2);
-        } catch (Exception e) {
-            System.err.println(RED + "Критична помилка виконання: " + e.getMessage() + RESET);
-        }
+    private static void task1_1() {
+        List<Order> orders = Arrays.asList(
+                new Order("O-001", OrderStatus.DELIVERED, 1500.00),
+                new Order("O-002", OrderStatus.PENDING, 300.00),
+                new Order("O-003", OrderStatus.CANCELLED, 75.00),
+                new Order("O-004", OrderStatus.DELIVERED, 2200.00),
+                new Order("O-005", OrderStatus.PENDING, 450.00),
+                new Order("O-006", OrderStatus.DELIVERED, 980.00)
+        );
 
-        printHeader("ВСІ ЗАВДАННЯ ВИКОНАНО");
+        long count = orders.stream()
+                .filter(o -> o.status() == OrderStatus.DELIVERED)
+                .count();
+
+        double sum = orders.stream()
+                .filter(o -> o.status() == OrderStatus.DELIVERED)
+                .mapToDouble(Order::amount)
+                .sum();
+
+        System.out.println("Виконаних замовлень: " + count);
+        System.out.println("Загальна сума: " + sum);
     }
 
     private static void task1_2() {
@@ -45,55 +66,93 @@ public class Lab7 {
                 "Черкаси", "Суми", "Хмельницький", "Чернівці", "Каховка"
         );
 
-        System.out.println(CYAN + "[Імперативний підхід]:" + RESET);
-        java.util.Collections.sort(cities);
-        for (String city : cities) {
-            if (city.startsWith("К")) System.out.println("  " + city.toUpperCase());
+        System.out.println("\n[Імперативний]:");
+        List<String> sorted = new java.util.ArrayList<>(cities);
+        java.util.Collections.sort(sorted);
+        for (String c : sorted) {
+            if (c.startsWith("К")) System.out.println(c.toUpperCase());
         }
 
-        System.out.println(CYAN + "\n[Функціональний підхід (Java Streams)]:" + RESET);
+        System.out.println("\n[Стріми]:");
         cities.stream()
                 .filter(c -> c.startsWith("К"))
                 .map(String::toUpperCase)
                 .sorted()
-                .forEach(c -> System.out.println("  " + c));
+                .forEach(System.out::println);
 
-        System.out.println(CYAN + "\n[Реактивний підхід (RxJava)]:" + RESET);
+        System.out.println("\n[RxJava]:");
         Observable.fromIterable(cities)
                 .filter(c -> c.startsWith("К"))
                 .map(String::toUpperCase)
                 .sorted()
-                .subscribe(c -> System.out.println("  " + c));
+                .subscribe(System.out::println);
+    }
+
+    private static void task2_1() {
+        System.out.println();
+        Observable<String> atm = Observable.just(
+                "Вставте картку",
+                "Введіть PIN-код",
+                "Оберіть суму: 500 грн",
+                "Видача готівки…",
+                "Дякуємо! Заберіть картку"
+        );
+
+        atm.subscribe(new Observer<String>() {
+            @Override public void onSubscribe(@NonNull Disposable d) { System.out.println("[БАНКОМАТ] Сесію розпочато"); }
+            @Override public void onNext(@NonNull String s) { System.out.println(">> " + s); }
+            @Override public void onError(@NonNull Throwable e) { System.out.println("[БАНКОМАТ] Помилка: " + e.getMessage()); }
+            @Override public void onComplete() { System.out.println("[БАНКОМАТ] Сесію завершено"); }
+        });
     }
 
     private static void task2_2() throws Exception {
-        List<String> results = Arrays.asList(
+        List<String> matches = Arrays.asList(
                 "Динамо 2:1 Шахтар", "Шахтар 3:0 Металіст",
                 "Ворскла 1:1 Зоря", "Дніпро-1 2:0 Львів", "Олександрія 0:1 Колос"
         );
 
-        System.out.println(CYAN + "Частина А: Холодний Observable (повний повтор для кожного):" + RESET);
-        Observable<String> cold = Observable.fromIterable(results);
-        cold.subscribe(r -> System.out.println("  Глядач 1: " + r));
-        cold.subscribe(r -> System.out.println("  Глядач 2: " + r));
+        System.out.println("\nХолодний Observable:");
+        Observable<String> cold = Observable.fromIterable(matches);
+        cold.subscribe(r -> System.out.println("Глядач 1: " + r));
+        cold.subscribe(r -> System.out.println("Глядач 2: " + r));
 
-        System.out.println(CYAN + "\nЧастина B: Гарячий Observable (трансляція наживо):" + RESET);
+        System.out.println("\nГарячий Observable:");
         CountDownLatch latch = new CountDownLatch(1);
         Observable<String> hotBase = Observable.interval(500, TimeUnit.MILLISECONDS)
-                .map(i -> results.get(i.intValue()))
-                .take(results.size());
+                .map(i -> matches.get(i.intValue()))
+                .take(matches.size());
 
-        io.reactivex.rxjava3.observables.ConnectableObservable<String> hot = hotBase.publish();
-
-        hot.subscribe(r -> System.out.println("  [ЕФІР] Глядач 1 отримав: " + r));
+        var hot = hotBase.publish();
+        hot.subscribe(r -> System.out.println("[LIVE] Глядач 1: " + r));
         hot.connect();
 
-        Thread.sleep(1200); // Запізнення другого глядача
-        hot.subscribe(r -> System.out.println("  [ЕФІР] Глядач 2 отримав: " + r),
-                     Throwable::printStackTrace,
+        Thread.sleep(1200);
+        hot.subscribe(r -> System.out.println("[LIVE] Глядач 2 (запізнився): " + r),
+                     e -> {},
                      latch::countDown);
 
         latch.await(5, TimeUnit.SECONDS);
+    }
+
+    record Product(String name, double priceUsd) {}
+
+    private static void task3_1() {
+        List<Product> products = Arrays.asList(
+                new Product("Навушники Sony", 49.99),
+                new Product("Клавіатура Logitech", 129.00),
+                new Product("Монітор LG 27\"", 399.00),
+                new Product("USB-хаб Anker", 35.00),
+                new Product("Веб-камера Logitech", 149.00),
+                new Product("Килимок для миші", 18.00),
+                new Product("SSD Samsung 1TB", 110.00)
+        );
+
+        System.out.println();
+        Observable.fromIterable(products)
+                .filter(p -> p.priceUsd() > 100)
+                .map(p -> p.name() + " -- " + String.format(java.util.Locale.US, "%.2f", p.priceUsd() * 41.5) + " грн (є в наявності)")
+                .subscribe(System.out::println);
     }
 
     record FoodOrder(String orderId, List<String> items) {}
@@ -105,177 +164,205 @@ public class Lab7 {
                 new FoodOrder("ZAM-03", Arrays.asList("Суші-сет 20шт", "Місо-суп"))
         );
 
-        System.out.println(CYAN + "Частина A: flatMap() розгортання в єдиний потік:" + RESET);
+        System.out.println("\nflatMap:");
         Observable.fromIterable(orders)
                 .flatMapIterable(FoodOrder::items)
-                .subscribe(item -> System.out.println("  >> " + item));
+                .subscribe(item -> System.out.println(">> " + item));
 
-        System.out.println(CYAN + "\nЧастина B: Порівняння flatMap (паралельно) та concatMap (черга):" + RESET);
-
-        System.out.print("  flatMap: ");
-        CountDownLatch flatLatch = new CountDownLatch(1);
+        System.out.println("\nflatMap vs concatMap:");
+        CountDownLatch l1 = new CountDownLatch(1);
         Observable.fromIterable(orders)
                 .flatMap(o -> Observable.fromIterable(o.items()).delay(200, TimeUnit.MILLISECONDS))
-                .subscribe(item -> System.out.print(item + " | "), Throwable::printStackTrace, flatLatch::countDown);
+                .subscribe(i -> System.out.print(i + " | "), e -> {}, l1::countDown);
+        l1.await(3, TimeUnit.SECONDS);
 
-        flatLatch.await(5, TimeUnit.SECONDS);
-
-        System.out.print("\n  concatMap: ");
-        CountDownLatch concatLatch = new CountDownLatch(1);
+        System.out.print("\n");
+        CountDownLatch l2 = new CountDownLatch(1);
         Observable.fromIterable(orders)
                 .concatMap(o -> Observable.fromIterable(o.items()).delay(200, TimeUnit.MILLISECONDS))
-                .subscribe(item -> System.out.print(item + " | "), Throwable::printStackTrace, concatLatch::countDown);
-
-        concatLatch.await(5, TimeUnit.SECONDS);
+                .subscribe(i -> System.out.print(i + " | "), e -> {}, l2::countDown);
+        l2.await(3, TimeUnit.SECONDS);
         System.out.println();
     }
 
-    private static void task4_2() {
-        System.out.println(CYAN + "Частина A: Реактивний кеш (Maybe):" + RESET);
-        String[] keys = {"user:1", "user:2", "user:error"};
-        for (String key : keys) {
-            findInCache(key)
-                    .defaultIfEmpty("Завантажено з бази даних (Cache Miss)")
-                    .subscribe(
-                        val -> System.out.println("  [" + key + "] Result: " + val),
-                        err -> System.err.println("  [" + key + "] Error: " + err.getMessage())
-                    );
-        }
+    private static void task4_1() {
+        System.out.println();
+        getUserById(42).subscribe(
+                u -> System.out.println("(+) Знайдено: " + u),
+                e -> System.out.println("(-) Помилка: " + e.getMessage())
+        );
+        getUserById(-1).subscribe(
+                u -> System.out.println("(+) Знайдено: " + u),
+                e -> System.out.println("(-) Помилка: " + e.getMessage())
+        );
+    }
 
-        System.out.println(CYAN + "\nЧастина B: Ланцюжок реєстрації (Completable):" + RESET);
+    private static Single<String> getUserById(int id) {
+        if (id > 0) return Single.just("Користувач #" + id + ": Іван Франко");
+        else return Single.error(new IllegalArgumentException("ID не може бути від’ємним або нульовим"));
+    }
+
+    private static void task4_2() {
+        System.out.println("\nMaybe Cache:");
+        List.of("user:1", "user:2", "user:error").forEach(k -> 
+            findInCache(k)
+                .defaultIfEmpty("Завантажено з БД (Cache Miss)")
+                .subscribe(
+                    v -> System.out.println("[" + k + "] -> " + v),
+                    e -> System.out.println("[" + k + "] -> Помилка: " + e.getMessage())
+                )
+        );
+
+        System.out.println("\nCompletable Chain:");
         validateInput()
                 .andThen(saveToDatabase(true))
                 .andThen(generateToken())
                 .subscribe(
-                    token -> System.out.println(GREEN + "  (+) Процес завершено. Токен видано: " + token + RESET),
-                    err -> System.err.println(RED + "  (-) Помилка ланцюжка: " + err.getMessage() + RESET)
+                    t -> System.out.println("(+) Реєстрація успішна. Token: " + t),
+                    e -> System.out.println("(-) Помилка: " + e.getMessage())
                 );
     }
 
-    // --- 5. АСИНХРОННІ ОПЕРАЦІЇ ТА SCHEDULERS ---
-    record ServiceCall(String serviceName, int delayMs) {}
+    private static void task5_1() {
+        System.out.println();
+        Observable.just("photo_1.jpg", "photo_2.jpg")
+                .doOnNext(img -> System.out.println("[" + Thread.currentThread().getName() + "] [ЗАВАНТ] Завантаження: " + img))
+                .subscribeOn(Schedulers.io())
+                .observeOn(Schedulers.computation())
+                .doOnNext(img -> System.out.println("[" + Thread.currentThread().getName() + "] [СТИСК] Стиснення: " + img))
+                .observeOn(Schedulers.trampoline())
+                .blockingSubscribe(img -> System.out.println("[" + Thread.currentThread().getName() + "] [ФОТО] Відображення: " + img));
+    }
+
+    record ServiceCall(String name, int delay) {}
 
     private static void task5_2() {
         List<ServiceCall> services = Arrays.asList(
-                new ServiceCall("AuthService", 800),
+                new ServiceCall("UserService", 800),
                 new ServiceCall("OrderService", 1200),
-                new ServiceCall("PromoService", 600)
+                new ServiceCall("RecommendationService", 600)
         );
 
-        System.out.println(CYAN + "Порівняння швидкості агрегації:" + RESET);
-
-        long startSync = System.currentTimeMillis();
-        Observable.fromIterable(services)
-                .concatMap(s -> Observable.just(s).delay(s.delayMs(), TimeUnit.MILLISECONDS))
-                .blockingSubscribe(s -> System.out.println("  [SYNC] " + s.serviceName + " готовий"));
-        System.out.println(YELLOW + "  Загальний час (послідовно): " + (System.currentTimeMillis() - startSync) + " мс" + RESET);
-
-        long startAsync = System.currentTimeMillis();
+        System.out.println();
+        long start = System.currentTimeMillis();
         Observable.fromIterable(services)
                 .flatMap(s -> Observable.just(s)
                         .subscribeOn(Schedulers.io())
-                        .delay(s.delayMs(), TimeUnit.MILLISECONDS)
-                        .doOnNext(sc -> System.out.println("  [ASYNC] " + sc.serviceName + " готовий (Thread: " + Thread.currentThread().getName() + ")")))
+                        .delay(s.delay(), TimeUnit.MILLISECONDS)
+                        .doOnNext(sc -> System.out.println("[OK] " + sc.name() + " (" + Thread.currentThread().getName() + ")")))
                 .blockingSubscribe();
-        System.out.println(GREEN + "  Загальний час (паралельно): " + (System.currentTimeMillis() - startAsync) + " мс" + RESET);
+        System.out.println("Час: " + (System.currentTimeMillis() - start) + " мс");
+    }
+
+    private static void task6_1() throws Exception {
+        Observable<String> keys = Observable.create(emitter -> {
+            String[] inputs = {"К", "Ки", "Киї", "Київ", "Київ ", "Київ К", "Київ Ки"};
+            long[] delays = { 50, 80, 120, 100, 400, 60, 350 };
+            for (int i = 0; i < inputs.length; i++) {
+                Thread.sleep(delays[i]);
+                emitter.onNext(inputs[i]);
+            }
+            emitter.onComplete();
+        });
+
+        System.out.println();
+        keys.debounce(300, TimeUnit.MILLISECONDS)
+                .subscribe(s -> System.out.println("[ПОШУК] Запит: \"" + s + "\""));
     }
 
     private static void task6_2() throws Exception {
-        System.out.println(CYAN + "Частина A: Batch Processing (buffer):" + RESET);
-        Observable.range(1, 12)
-                .map(i -> "Event-" + i)
+        System.out.println("\nbuffer(5):");
+        Observable.fromArray("LOGIN:user1", "CLICK:btn_buy", "VIEW:product_42", "LOGIN:user2", "LOGOUT:user1", "CLICK:btn_cart", "VIEW:product_7", "LOGIN:user3", "CLICK:btn_pay", "LOGOUT:user2", "LOGIN:user4", "VIEW:product_1")
                 .buffer(5)
-                .subscribe(batch -> System.out.println("  [DATABASE] Batch INSERT: " + batch));
+                .subscribe(b -> System.out.println("[DB] Batch: " + b));
 
-        System.out.println(CYAN + "\nЧастина B: BackpressureStrategy.DROP (утилізація зайвого):" + RESET);
-        AtomicInteger processed = new AtomicInteger();
-        AtomicInteger dropped = new AtomicInteger();
+        System.out.println("\nFlowable.DROP:");
+        AtomicInteger proc = new AtomicInteger();
+        AtomicInteger drop = new AtomicInteger();
         CountDownLatch latch = new CountDownLatch(1);
 
         Flowable.range(1, 1000)
-                .onBackpressureDrop(i -> dropped.incrementAndGet())
-                .observeOn(Schedulers.computation(), false, 1) // Обмежуємо буфер до 1 для наочності DROP
+                .onBackpressureDrop(i -> drop.incrementAndGet())
+                .observeOn(Schedulers.computation(), false, 128)
                 .subscribe(new Subscriber<Integer>() {
                     private Subscription s;
                     @Override public void onSubscribe(Subscription s) { this.s = s; s.request(1); }
                     @Override public void onNext(Integer i) {
-                        try { Thread.sleep(5); } catch (InterruptedException e) {} // Повільна обробка
-                        processed.incrementAndGet();
+                        try { Thread.sleep(10); } catch (Exception e) {}
+                        proc.incrementAndGet();
                         s.request(1);
                     }
                     @Override public void onError(Throwable t) {}
                     @Override public void onComplete() { latch.countDown(); }
                 });
 
-        latch.await(3, TimeUnit.SECONDS);
-        System.out.println(PURPLE + "  [RESULT] Оброблено: " + processed.get() + " | Відкинуто: " + dropped.get() + RESET);
+        latch.await(5, TimeUnit.SECONDS);
+        System.out.println("Оброблено: " + proc.get() + " | Відкинуто: " + drop.get());
+    }
+
+    private static void task7_1() {
+        Observable<String> service = Observable.create(emitter -> {
+            emitter.onNext("USD -> UAH: 41.50");
+            emitter.onNext("EUR -> UAH: 44.20");
+            emitter.onError(new RuntimeException("Error"));
+        });
+
+        System.out.println("\nonErrorReturn:");
+        service.onErrorReturn(e -> "Курс з кешу: USD -> UAH: 41.00")
+                .subscribe(System.out::println);
+
+        System.out.println("\nonErrorResumeNext:");
+        service.onErrorResumeNext(e -> Observable.just("JPY -> UAH: 0.27", "PLN -> UAH: 10.30"))
+                .subscribe(System.out::println);
     }
 
     private static void task7_2() throws Exception {
-        System.out.println(CYAN + "Exponential Backoff (Повтор запиту із затримкою 2^(n-1)):" + RESET);
-        AtomicInteger attempt = new AtomicInteger(0);
+        AtomicInteger count = new AtomicInteger(0);
         CountDownLatch latch = new CountDownLatch(1);
 
-        Observable<String> unstableApi = Observable.create(emitter -> {
-            int current = attempt.incrementAndGet();
-            System.out.println("  [SYSTEM] Спроба #" + current + "...");
-            if (current < 4) {
-                emitter.onError(new IOException("Timeout"));
-            } else {
-                emitter.onNext(GREEN + "  (+) Дані успішно отримано на спробі " + current + RESET);
+        Observable<String> api = Observable.create(emitter -> {
+            int a = count.incrementAndGet();
+            System.out.println("Спроба #" + a);
+            if (a < 4) emitter.onError(new IOException());
+            else {
+                emitter.onNext("(+) OK: {status: 'ok'}");
                 emitter.onComplete();
             }
         });
 
-        unstableApi.retryWhen(errors -> errors
-                .zipWith(Observable.range(1, 4), (err, retry) -> retry)
-                .flatMap(retry -> {
-                    long delay = (long) Math.pow(2, retry - 1);
-                    System.out.println(YELLOW + "    ! Помилка. Очікуємо " + delay + " сек..." + RESET);
-                    return Observable.timer(delay, TimeUnit.SECONDS);
+        System.out.println();
+        api.retryWhen(errs -> errs
+                .zipWith(Observable.range(1, 4), (e, i) -> i)
+                .flatMap(i -> {
+                    long d = (long) Math.pow(2, i - 1);
+                    System.out.println("Чекаємо " + d + " сек...");
+                    return Observable.timer(d, TimeUnit.SECONDS);
                 }))
-                .subscribe(System.out::println, Throwable::printStackTrace, latch::countDown);
+                .subscribe(System.out::println, e -> {}, latch::countDown);
 
         latch.await(15, TimeUnit.SECONDS);
     }
 
-    // --- ДОПОМІЖНІ МЕТОДИ ---
-
-    private static Maybe<String> findInCache(String key) {
-        return switch (key) {
-            case "user:1" -> Maybe.just("{'id':1, 'name':'Леся'}");
-            case "user:error" -> Maybe.error(new RuntimeException("Redis connection refused"));
+    private static Maybe<String> findInCache(String k) {
+        return switch (k) {
+            case "user:1" -> Maybe.just("{'name':'Леся', 'age':28}");
+            case "user:error" -> Maybe.error(new RuntimeException("Redis error"));
             default -> Maybe.empty();
         };
     }
 
     private static Completable validateInput() {
-        return Completable.fromAction(() -> System.out.println("  [VALIDATE] Перевірка вхідних даних..."));
+        return Completable.fromAction(() -> System.out.println("[ПОШУК] Перевірка..."));
     }
 
-    private static Completable saveToDatabase(boolean success) {
+    private static Completable saveToDatabase(boolean s) {
         return Completable.fromAction(() -> {
-            System.out.println("  [DB] Збереження профілю користувача...");
-            if (!success) throw new IOException("Database error");
+            System.out.println("[DB] Збереження...");
+            if (!s) throw new IOException();
         });
     }
 
     private static Single<String> generateToken() {
-        return Single.just("SECURE-JWT-TOKEN-2026").delay(100, TimeUnit.MILLISECONDS);
-    }
-
-    private static void printHeader(String title) {
-        String border = "=".repeat(title.length() + 10);
-        System.out.println("\n" + PURPLE + border + RESET);
-        System.out.println(PURPLE + "     " + title + RESET);
-        System.out.println(PURPLE + border + "\n" + RESET);
-    }
-
-    private interface Task { void run() throws Exception; }
-
-    private static void executeTask(String name, Task task) throws Exception {
-        System.out.println(YELLOW + ">>> ВИКОНУЄТЬСЯ " + name + RESET);
-        task.run();
-        System.out.println(PURPLE + "-".repeat(40) + RESET + "\n");
+        return Single.just("jwt.token.demo");
     }
 }
